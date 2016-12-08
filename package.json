@@ -1,0 +1,22 @@
+{
+  "name": "doc88-download",
+  "version": "0.0.1",
+  "description": "Download doc88.com document as PNG and HTML",
+  "main": "index.js",
+  "author": "TunG",
+  "license": "MIT",
+  "dependencies": {
+    "async": "^2.1.4",
+    "commander": "^2.9.0",
+    "debug": "^2.3.3",
+    "electron": "^1.4.10",
+    "mkdirp": "^0.5.1",
+    "request": "^2.79.0"
+  },
+  "scripts": {
+    "test": "electron index.js http://www.doc88.com/p-9189579983739.html"
+  },
+  "bin": {
+    "doc88-download": "./cli.js"
+  }
+}
