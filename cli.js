@@ -3,7 +3,10 @@
 var electron = require('electron');
 var proc = require('child_process');
 
-var child = proc.spawn(electron, process.argv.slice(2), { stdio: 'inherit' });
+var args = [`${__dirname}/index.js`];
+if (process.argv.length > 2) args.push(process.argv.slice(2));
+
+var child = proc.spawn(electron, args, { stdio: 'inherit' });
 child.on('close', function (code) {
     process.exit(code);
 });
