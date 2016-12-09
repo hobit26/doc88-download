@@ -23,7 +23,7 @@ program
     .option('-d, --force-download', 'force download if PNG already exists')
     .option('-w, --wait <ms>', 'milliseconds to wait before capture, default 1000', myParseInt, 1000)
     .option('-c, --concurrent-worker <max>', 'max concurrent worker for capture, default 1', myParseInt, 1)
-    .option('-t, --scale-up-factor <t>', 'scale up factor', myParseInt, 5)
+    .option('-t, --scale-up-factor <t>', 'scale up factor, default 5', myParseInt, 5)
     .parse(process.argv);
 if (!program.args || program.args.length == 0) program.help();
 debug('args: out-dir: %s', program.outDir);
