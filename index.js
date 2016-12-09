@@ -17,6 +17,7 @@ function myParseInt(string, defaultValue) {
 }
 
 program
+    .version(require('./package.json').version)
     .usage('[options] <url>')
     .option('-o, --out-dir <dir>', 'output directory, default "./output"', 'output')
     .option('-f, --plugin-flash-path <path>', 'flash Player plugin path')
@@ -59,11 +60,11 @@ function main() {
         var cancel = details.resourceType != 'mainFrame';
         // only allow critical script
         if (details.resourceType == 'script' && [
-                '/jquery',
-                '/view-mini.js'
-            ].map(function (value, index) {
-                return details.url.indexOf(value) != -1;
-            }).indexOf(true) != -1) {
+            '/jquery',
+            '/view-mini.js'
+        ].map(function (value, index) {
+            return details.url.indexOf(value) != -1;
+        }).indexOf(true) != -1) {
             cancel = false;
         }
         if (!cancel) debug('req: ' + details.method + ' - ' + details.url + ' [' + details.resourceType + `]`);
@@ -124,7 +125,7 @@ ipc.on('document:retrieved', function (evt, props) {
             '<param name="hasPriority" value="true"><param name="wmode" value="transparent"><param name="swliveconnect" value="true">' +
             '<param name="FlashVars" value="' + flashVars + '">' +
             '<param name="allowScriptAccess" value="always"></object></body></html>';
-        var htmlFile = path.join(htmlDir, `${padLeft(i+1, totalPageStrLength)}.html`);
+        var htmlFile = path.join(htmlDir, `${padLeft(i + 1, totalPageStrLength)}.html`);
         fs.writeFileSync(htmlFile, html);
         htmlFiles.push(htmlFile);
         pageDimension[i] = {
@@ -135,7 +136,7 @@ ipc.on('document:retrieved', function (evt, props) {
     session.defaultSession.webRequest.onBeforeSendHeaders(null);
     async.eachOfLimit(htmlFiles, program.concurrentWorker, function (item, key, callback) {
         var file = htmlFiles[key];
-        var pngFile = path.join(pngDir, `${padLeft(key+1, totalPageStrLength)}.png`);
+        var pngFile = path.join(pngDir, `${padLeft(key + 1, totalPageStrLength)}.png`);
         if (!program.forceDownload && fs.existsSync(pngFile)) {
             debug('png file exists, skip processing `%s`', file);
             return callback();
