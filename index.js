@@ -2,6 +2,7 @@ var path = require('path'),
     fs = require('fs'),
     app = require('electron').app,
     ipc = require('electron').ipcMain,
+    session = require('electron').session,
     BrowserWindow = require('electron').BrowserWindow,
     request = require('request'),
     mkdirp = require('mkdirp'),
@@ -10,13 +11,20 @@ var path = require('path'),
     program = require('commander'),
     doc88util = require('./doc88util');
 
+function myParseInt(string, defaultValue) {
+    var int = parseInt(string, 10);
+    return typeof int === 'number' ? int : defaultValue;
+}
+
 program
     .usage('[options] <url>')
-    .option('-o, --out-dir <dir>', 'Output directory, default "./output"', 'output')
-    .option('-f, --plugin-flash-path <path>', 'Flash Player plugin path')
-    .option('-d, --force-download', 'Force download if PNG already exists')
-    .option('-w, --wait <ms>', 'Milliseconds to wait before capture, default 1500', 1500)
-    .option('-c, --concurrent-worker <max>', 'Max concurrent worker for capture, default 1', 1)
+    .option('-o, --out-dir <dir>', 'output directory, default "./output"', 'output')
+    .option('-f, --plugin-flash-path <path>', 'flash Player plugin path')
+    .option('-d, --force-download', 'force download if PNG already exists')
+    .option('-w, --wait <ms>', 'milliseconds to wait before capture, default 1000', myParseInt, 1000)
+    .option('-c, --concurrent-worker <max>', 'max concurrent worker for capture, default 1', myParseInt, 1)
+    .option('--width <px>', 'override width of the page', myParseInt)
+    .option('--height <px>', 'override height of page', myParseInt)
     .parse(process.argv);
 if (!program.args || program.args.length == 0) program.help();
 debug('args: out-dir: %s', program.outDir);
@@ -24,6 +32,8 @@ debug('args: plugin-flash-path: %s', program.pluginFlashPath);
 debug('args: force-download: %s', program.forceDownload ? true : false);
 debug('args: wait: %s', program.wait);
 debug('args: concurrent-worker: %s', program.concurrentWorker);
+debug('args: width: %s', program.width);
+debug('args: height: %s', program.height);
 debug('args: url: %s', program.args);
 
 var ppapiFlashPath;
@@ -47,6 +57,23 @@ mkdirp(program.outDir);
 
 function main() {
     debug('evt: ready');
+    session.defaultSession.webRequest.onBeforeSendHeaders(function (details, callback) {
+        var cancel = details.resourceType != 'mainFrame';
+        // only allow critical script
+        if (details.resourceType == 'script' && [
+                '/jquery',
+                '/view-mini.js'
+            ].map(function (value, index) {
+                return details.url.indexOf(value) != -1;
+            }).indexOf(true) != -1) {
+            cancel = false;
+        }
+        if (!cancel) debug('req: ' + details.method + ' - ' + details.url + ' [' + details.resourceType + `]`);
+        callback({
+            cancel: cancel
+        });
+    });
+
     mainWin = new BrowserWindow({
         show: false
     });
@@ -75,6 +102,8 @@ ipc.on('document:retrieved', function (evt, props) {
     var docDir = path.resolve(path.join(program.outDir, props.product_code));
     var htmlDir = path.join(docDir, 'html');
     var pngDir = path.join(docDir, 'png');
+    var pageWidth = program.width || 2880;
+    var pageHeight = program.height || 4071;
     mkdirp(docDir);
     mkdirp(htmlDir);
     mkdirp(pngDir);
@@ -85,22 +114,24 @@ ipc.on('document:retrieved', function (evt, props) {
         debug('wrote raw.html to path "%s"', fullHtmlFile);
     }
 
+    var totalPageStrLength = String(props.mtp).length;
     var htmlFiles = [];
     for (var i = 0; i < props.mtp; i++) {
         var flashVars = doc88util.constructFlashParams(i + 1, pageContext, props.mtp, props.mhost, props.mhi, props.mpebt, props.madif, props.p_s);
         var html =
-            '<!DOCTYPE html>\n<html><body style="width:3840px;height:5428px;overflow:hidden;margin:0">' +
+            `<!DOCTYPE html>\n<html><body style="width:${pageWidth}px;height:${pageHeight}px;overflow:hidden;margin:0">` +
             '<object type="application/x-shockwave-flash" data="http://assets.doc88.com/assets/swf/pv.swf?v=1.7" width="100%" height="100%" style="visibility: visible;">' +
             '<param name="hasPriority" value="true"><param name="wmode" value="transparent"><param name="swliveconnect" value="true">' +
             '<param name="FlashVars" value="' + flashVars + '">' +
             '<param name="allowScriptAccess" value="always"></object></body></html>';
-        var htmlFile = path.join(htmlDir, 'page' + (i + 1) + '.html');
+        var htmlFile = path.join(htmlDir, `${padLeft(i+1, totalPageStrLength)}.html`);
         fs.writeFileSync(htmlFile, html);
         htmlFiles.push(htmlFile);
     }
+    session.defaultSession.webRequest.onBeforeSendHeaders(null);
     async.eachOfLimit(htmlFiles, program.concurrentWorker, function (item, key, callback) {
         var file = htmlFiles[key];
-        var pngFile = path.join(pngDir, `page${key + 1}.png`);
+        var pngFile = path.join(pngDir, `${padLeft(key+1, totalPageStrLength)}.png`);
         if (!program.forceDownload && fs.existsSync(pngFile)) {
             debug('png file exists, skip processing `%s`', file);
             return callback();
@@ -108,7 +139,7 @@ ipc.on('document:retrieved', function (evt, props) {
         debug('processing `%s`', file);
         var win = new BrowserWindow({
             useContentSize: true,
-            frame: true,
+            frame: false,
             show: false,
             autoHideMenuBar: true,
             enableLargerThanScreen: true,
@@ -117,9 +148,9 @@ ipc.on('document:retrieved', function (evt, props) {
                 plugins: true
             }
         });
-        win.on('ready-to-show', function () {
-            debug('ready to show `%s`', file);
-            win.setSize(3840 + 16, 5428 + 39);;
+        win.webContents.once('did-finish-load', function () {
+            debug('evt: did-finish-load: `%s`', file);
+            win.setSize(pageWidth, pageHeight);
             setTimeout(function () {
                 debug('capturing image of `%s`', file);
                 win.capturePage(function (img) {
@@ -138,4 +169,8 @@ ipc.on('document:retrieved', function (evt, props) {
     });
     evt.returnValue = true;
     mainWin.destroy();
+
+    function padLeft(nr, n, str) {
+        return Array(n - String(nr).length + 1).join(str || '0') + nr;
+    }
 });
