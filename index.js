@@ -23,8 +23,7 @@ program
     .option('-d, --force-download', 'force download if PNG already exists')
     .option('-w, --wait <ms>', 'milliseconds to wait before capture, default 1000', myParseInt, 1000)
     .option('-c, --concurrent-worker <max>', 'max concurrent worker for capture, default 1', myParseInt, 1)
-    .option('--width <px>', 'override width of the page', myParseInt)
-    .option('--height <px>', 'override height of page', myParseInt)
+    .option('-t, --scale-up-factor <t>', 'scale up factor', myParseInt, 5)
     .parse(process.argv);
 if (!program.args || program.args.length == 0) program.help();
 debug('args: out-dir: %s', program.outDir);
@@ -32,8 +31,7 @@ debug('args: plugin-flash-path: %s', program.pluginFlashPath);
 debug('args: force-download: %s', program.forceDownload ? true : false);
 debug('args: wait: %s', program.wait);
 debug('args: concurrent-worker: %s', program.concurrentWorker);
-debug('args: width: %s', program.width);
-debug('args: height: %s', program.height);
+debug('args: scale-up-factor: %s', program.scaleUpFactor);
 debug('args: url: %s', program.args);
 
 var ppapiFlashPath;
@@ -102,8 +100,6 @@ ipc.on('document:retrieved', function (evt, props) {
     var docDir = path.resolve(path.join(program.outDir, props.product_code));
     var htmlDir = path.join(docDir, 'html');
     var pngDir = path.join(docDir, 'png');
-    var pageWidth = program.width || 2880;
-    var pageHeight = program.height || 4071;
     mkdirp(docDir);
     mkdirp(htmlDir);
     mkdirp(pngDir);
@@ -115,11 +111,15 @@ ipc.on('document:retrieved', function (evt, props) {
     }
 
     var totalPageStrLength = String(props.mtp).length;
+    var pageDimension = [];
     var htmlFiles = [];
     for (var i = 0; i < props.mtp; i++) {
         var flashVars = doc88util.constructFlashParams(i + 1, pageContext, props.mtp, props.mhost, props.mhi, props.mpebt, props.madif, props.p_s);
+        var pageContextCodes = pageContext[i].split('-');
+        var width = parseInt(pageContextCodes[1]) * program.scaleUpFactor;
+        var height = parseInt(pageContextCodes[2]) * program.scaleUpFactor;
         var html =
-            `<!DOCTYPE html>\n<html><body style="width:${pageWidth}px;height:${pageHeight}px;overflow:hidden;margin:0">` +
+            `<!DOCTYPE html>\n<html><body style="width:${width}px;height:${height}px;overflow:hidden;margin:0">` +
             '<object type="application/x-shockwave-flash" data="http://assets.doc88.com/assets/swf/pv.swf?v=1.7" width="100%" height="100%" style="visibility: visible;">' +
             '<param name="hasPriority" value="true"><param name="wmode" value="transparent"><param name="swliveconnect" value="true">' +
             '<param name="FlashVars" value="' + flashVars + '">' +
@@ -127,6 +127,10 @@ ipc.on('document:retrieved', function (evt, props) {
         var htmlFile = path.join(htmlDir, `${padLeft(i+1, totalPageStrLength)}.html`);
         fs.writeFileSync(htmlFile, html);
         htmlFiles.push(htmlFile);
+        pageDimension[i] = {
+            width: width,
+            height: height
+        };
     }
     session.defaultSession.webRequest.onBeforeSendHeaders(null);
     async.eachOfLimit(htmlFiles, program.concurrentWorker, function (item, key, callback) {
@@ -150,7 +154,7 @@ ipc.on('document:retrieved', function (evt, props) {
         });
         win.webContents.once('did-finish-load', function () {
             debug('evt: did-finish-load: `%s`', file);
-            win.setSize(pageWidth, pageHeight);
+            win.setSize(pageDimension[key].width, pageDimension[key].height);
             setTimeout(function () {
                 debug('capturing image of `%s`', file);
                 win.capturePage(function (img) {
@@ -159,7 +163,7 @@ ipc.on('document:retrieved', function (evt, props) {
                     callback();
                 });
             }, program.wait);
-        })
+        });
         debug('load ' + file);
         win.loadURL('file://' + file);
     }, function (err) {
