@@ -24,7 +24,7 @@ program
     .option('-d, --force-download', 'force download if PNG already exists')
     .option('-w, --wait <ms>', 'milliseconds to wait before capture, default 1000', myParseInt, 1000)
     .option('-c, --concurrent-worker <max>', 'max concurrent worker for capture, default 1', myParseInt, 1)
-    .option('-t, --scale-up-factor <t>', 'scale up factor, default 5', myParseInt, 5)
+    .option('-t, --scale-up-factor <t>', 'scale up factor, default 4', myParseInt, 4)
     .parse(process.argv);
 if (!program.args || program.args.length == 0) program.help();
 debug('args: out-dir: %s', program.outDir);
@@ -76,6 +76,7 @@ function main() {
     mainWin = new BrowserWindow({
         show: false
     });
+    console.log('Fetching ' + program.args[0]);
     mainWin.loadURL(program.args[0]);
     mainWin.webContents.once('did-finish-load', function () {
         debug('evt: did-finish-load');
@@ -97,6 +98,11 @@ function main() {
 
 ipc.on('document:retrieved', function (evt, props) {
     debug('evt: document:retrieved')
+    console.log('Page loaded')
+    if (!props.mpib) {
+        console.log('Unable to get page context, please check network connection and URL');
+        return app.exit(1);
+    }
     var pageContext = doc88util.decodePageContext(props.mpib).split(',');
     var docDir = path.resolve(path.join(program.outDir, props.product_code));
     var htmlDir = path.join(docDir, 'html');
@@ -108,10 +114,11 @@ ipc.on('document:retrieved', function (evt, props) {
     if (props && props.product_code && props.html) {
         var fullHtmlFile = path.join(docDir, 'raw.html');
         fs.writeFileSync(fullHtmlFile, props.html);
-        debug('wrote raw.html to path "%s"', fullHtmlFile);
+        console.log(`Wrote raw html file '${fullHtmlFile}'`);
     }
 
     var totalPageStrLength = String(props.mtp).length;
+    console.log('Total pages: ' + props.mtp);
     var pageDimension = [];
     var htmlFiles = [];
     for (var i = 0; i < props.mtp; i++) {
@@ -133,15 +140,15 @@ ipc.on('document:retrieved', function (evt, props) {
             height: height
         };
     }
+    console.log(`Wrote page html to directory '${htmlDir}'`);
     session.defaultSession.webRequest.onBeforeSendHeaders(null);
     async.eachOfLimit(htmlFiles, program.concurrentWorker, function (item, key, callback) {
         var file = htmlFiles[key];
         var pngFile = path.join(pngDir, `${padLeft(key + 1, totalPageStrLength)}.png`);
         if (!program.forceDownload && fs.existsSync(pngFile)) {
-            debug('png file exists, skip processing `%s`', file);
+            console.log(`Image for page ${i + 1} already exists, skip processing '${file}'`)
             return callback();
         }
-        debug('processing `%s`', file);
         var win = new BrowserWindow({
             useContentSize: true,
             frame: false,
@@ -159,7 +166,10 @@ ipc.on('document:retrieved', function (evt, props) {
             setTimeout(function () {
                 debug('capturing image of `%s`', file);
                 win.capturePage(function (img) {
-                    fs.writeFile(pngFile, img.toPNG());
+                    fs.writeFile(pngFile, img.toPNG(), function (err) {
+                        if (err) return console.err(err);
+                        console.log(`Processed '${file}', image saved at '${pngFile}'`);
+                    });
                     win.destroy();
                     callback();
                 });
@@ -169,7 +179,7 @@ ipc.on('document:retrieved', function (evt, props) {
         win.loadURL('file://' + file);
     }, function (err) {
         if (err) console.err(err);
-        debug('exit');
+        console.log('Processed all pages');
         app.exit(0);
     });
     evt.returnValue = true;
