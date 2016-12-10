@@ -166,11 +166,9 @@ ipc.on('document:retrieved', function (evt, props) {
             setTimeout(function () {
                 debug('capturing image of `%s`', file);
                 win.capturePage(function (img) {
-                    fs.writeFile(pngFile, img.toPNG(), function (err) {
-                        if (err) return console.err(err);
-                        console.log(`Processed '${file}', image saved at '${pngFile}'`);
-                    });
+                    fs.writeFileSync(pngFile, img.toPNG());
                     win.destroy();
+                    console.log(`Processed '${file}', image saved at '${pngFile}'`);
                     callback();
                 });
             }, program.wait);
