@@ -7,6 +7,7 @@ var path = require('path'),
     request = require('request'),
     mkdirp = require('mkdirp'),
     async = require('async'),
+    jimp = require('jimp'),
     debug = require('debug')('doc88-download'),
     program = require('commander'),
     doc88util = require('./doc88util');
@@ -22,9 +23,10 @@ program
     .option('-o, --out-dir <dir>', 'output directory, default "./output"', 'output')
     .option('-f, --plugin-flash-path <path>', 'flash Player plugin path')
     .option('-d, --force-download', 'force download if PNG already exists')
-    .option('-w, --wait <ms>', 'milliseconds to wait before capture, default 1000', myParseInt, 1000)
+    .option('-w, --wait <ms>', 'milliseconds to wait before capture, default 500', myParseInt, 500)
     .option('-c, --concurrent-worker <max>', 'max concurrent worker for capture, default 1', myParseInt, 1)
     .option('-t, --scale-up-factor <t>', 'scale up factor, default 4', myParseInt, 4)
+    .option('-s, --skip-check', 'skip captured image checking')
     .parse(process.argv);
 if (!program.args || program.args.length == 0) program.help();
 debug('args: out-dir: %s', program.outDir);
@@ -163,15 +165,40 @@ ipc.on('document:retrieved', function (evt, props) {
         win.webContents.once('did-finish-load', function () {
             debug('evt: did-finish-load: `%s`', file);
             win.setSize(pageDimension[key].width, pageDimension[key].height);
-            setTimeout(function () {
-                debug('capturing image of `%s`', file);
-                win.capturePage(function (img) {
-                    fs.writeFileSync(pngFile, img.toPNG());
-                    win.destroy();
+            var resultImage;
+            var redImage;
+            var checkCount = 0;
+            async.doWhilst(function (callback) {
+                setTimeout(function () {
+                    debug("capturing image of '%s'", file);
+                    win.capturePage(function (nativeImage) {
+                        jimp.read(nativeImage.toPNG(), function (err, jimpImage) {
+                            if (err) return callback(new Error('Unable to convert NativeImage to Jimp image'));
+                            resultImage = jimpImage;
+                            new jimp(nativeImage.getSize().width, nativeImage.getSize().height, 0xFF0000FF, function (err, jimgRedImage) {
+                                if (err) return callback(new Error('Unable to create red image for comparison'));
+                                redImage = jimgRedImage;
+                                callback();
+                            });
+                        });
+                    });
+                }, program.wait);
+            }, function () {
+                if (program.skipCheck) return false;
+                debug("checking image captured from '%s'", file);
+                var diff = jimp.diff(resultImage, redImage);
+                debug('image pixel diff: %s', diff.percent);
+                return checkCount++ < 5 && diff.percent < 0.005;
+            }, function (err) {
+                if (err) {
+                    console.log("Unable to capture image of '%s': %s", file, err);
+                } else {
+                    resultImage.write(pngFile);
                     console.log(`Processed '${file}', image saved at '${pngFile}'`);
-                    callback();
-                });
-            }, program.wait);
+                }
+                win.destroy();
+                callback();
+            });
         });
         debug('load ' + file);
         win.loadURL('file://' + file);
