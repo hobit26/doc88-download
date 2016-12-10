@@ -146,7 +146,7 @@ ipc.on('document:retrieved', function (evt, props) {
         var file = htmlFiles[key];
         var pngFile = path.join(pngDir, `${padLeft(key + 1, totalPageStrLength)}.png`);
         if (!program.forceDownload && fs.existsSync(pngFile)) {
-            console.log(`Image for page ${i + 1} already exists, skip processing '${file}'`)
+            console.log(`Image for page ${key + 1} already exists, skip processing '${file}'`)
             return callback();
         }
         var win = new BrowserWindow({
