@@ -109,9 +109,9 @@ ipc.on('document:retrieved', function (evt, props) {
     var docDir = path.resolve(path.join(program.outDir, props.product_code));
     var htmlDir = path.join(docDir, 'html');
     var pngDir = path.join(docDir, 'png');
-    mkdirp(docDir);
-    mkdirp(htmlDir);
-    mkdirp(pngDir);
+    mkdirp.sync(docDir);
+    mkdirp.sync(htmlDir);
+    mkdirp.sync(pngDir);
 
     if (props && props.product_code && props.html) {
         var fullHtmlFile = path.join(docDir, 'raw.html');
