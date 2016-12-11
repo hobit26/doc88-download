@@ -23,7 +23,7 @@ program
     .option('-o, --out-dir <dir>', 'output directory, default "./output"', 'output')
     .option('-f, --plugin-flash-path <path>', 'flash Player plugin path')
     .option('-d, --force-download', 'force download if PNG already exists')
-    .option('-w, --wait <ms>', 'milliseconds to wait before capture, default 1000', myParseInt, 1000)
+    .option('-w, --wait <ms>', 'milliseconds to wait before capture, default 500', myParseInt, 500)
     .option('-c, --concurrent-worker <max>', 'max concurrent worker for capture, default 1', myParseInt, 1)
     .option('-t, --scale-up-factor <t>', 'scale up factor, default 5', myParseInt, 5)
     .option('-s, --skip-check', 'skip captured image checking')
@@ -166,16 +166,18 @@ ipc.on('document:retrieved', function (evt, props) {
             debug('evt: did-finish-load: `%s`', file);
             win.setSize(pageDimension[key].width, pageDimension[key].height);
             var resultImage;
+            var compareImage;
             var redImage;
             var checkCount = 0;
             async.doWhilst(function (callback) {
                 setTimeout(function () {
                     debug("capturing image of '%s'", file);
                     win.capturePage(function (nativeImage) {
-                        jimp.read(nativeImage.toPNG(), function (err, jimpImage) {
+                        resultImage = nativeImage;
+                        jimp.read(nativeImage.resize({ height: 480, quality: 'good' }).toPNG(), function (err, jimpImage) {
                             if (err) return callback(new Error('Unable to convert NativeImage to Jimp image'));
-                            resultImage = jimpImage;
-                            new jimp(nativeImage.getSize().width, nativeImage.getSize().height, 0xFF0000FF, function (err, jimgRedImage) {
+                            compareImage = jimpImage;
+                            new jimp(compareImage.bitmap.width, compareImage.bitmap.height, 0xFF0000FF, function (err, jimgRedImage) {
                                 if (err) return callback(new Error('Unable to create red image for comparison'));
                                 redImage = jimgRedImage;
                                 callback();
@@ -186,19 +188,25 @@ ipc.on('document:retrieved', function (evt, props) {
             }, function () {
                 if (program.skipCheck) return false;
                 debug("checking image captured from '%s'", file);
-                var diff = jimp.diff(resultImage, redImage);
+                var diff = jimp.diff(compareImage, redImage);
                 debug('image pixel diff: %s', diff.percent);
-                return checkCount++ < 5 && diff.percent < 0.005;
+                return checkCount++ < 10 && diff.percent < 0.005;
             }, function (err) {
                 if (err) {
                     console.log("Unable to capture image of '%s': %s", file, err);
+                    win.destroy();
+                    callback();
                 } else {
-                    resultImage.write(pngFile, function (err) {
-                        console.log(`Processed '${file}', image saved at '${pngFile}'`);
+                    fs.writeFile(pngFile, resultImage.toPNG(), function (err) {
+                        if (err) {
+                            console.log("Unable to write file '%s': %s", pngFile, err);
+                        } else {
+                            console.log(`Processed '${file}', image saved at '${pngFile}'`);
+                        }
+                        win.destroy();
                         callback();
                     });
                 }
-                win.destroy();
             });
         });
         debug('load ' + file);
