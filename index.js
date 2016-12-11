@@ -193,11 +193,12 @@ ipc.on('document:retrieved', function (evt, props) {
                 if (err) {
                     console.log("Unable to capture image of '%s': %s", file, err);
                 } else {
-                    resultImage.write(pngFile);
-                    console.log(`Processed '${file}', image saved at '${pngFile}'`);
+                    resultImage.write(pngFile, function (err) {
+                        console.log(`Processed '${file}', image saved at '${pngFile}'`);
+                        callback();
+                    });
                 }
                 win.destroy();
-                callback();
             });
         });
         debug('load ' + file);
