@@ -2,8 +2,13 @@
   "name": "doc88-download",
   "version": "0.0.1",
   "description": "Download doc88.com document as PNG and HTML",
+  "homepage": "https://github.com/hmt1203/doc88-download",
   "main": "index.js",
   "author": "TunG",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hmt1203/doc88-download"
+  },
   "license": "MIT",
   "dependencies": {
     "async": "^2.1.4",
@@ -15,7 +20,7 @@
     "request": "^2.79.0"
   },
   "scripts": {
-    "test": "electron index.js http://www.doc88.com/p-9189579983739.html"
+    "test": "node cli"
   },
   "bin": {
     "doc88-download": "./cli.js"
