@@ -1,6 +1,6 @@
 {
   "name": "doc88-download",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "description": "Download doc88.com document as PNG and HTML",
   "homepage": "https://github.com/hmt1203/doc88-download",
   "main": "index.js",
